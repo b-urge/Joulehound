@@ -18,10 +18,10 @@ One agent task — *"decode a multi-spectral QR code and act on its contents"* �
 
 ## Stack
 
-- **nexus-ml-metrics** — physics-grounded energy scoring (the thesis)
-- **pollard** — governed execution trees for the agent loop (the optimization lever)
-- **multispecqr** — compute-heavy ML tool the agent invokes
-- **llama.cpp** — on-device LLM brain (NEON-optimized on Arm)
+- **[nexus-ml-metrics](https://pypi.org/project/nexus-ml-metrics/)** — physics-grounded energy scoring (the thesis)
+- **[pollard](https://pypi.org/project/pollard/)** — governed execution trees for the agent loop (the optimization lever)
+- **[multispecqr](https://pypi.org/project/multispecqr/)** — compute-heavy ML tool the agent invokes
+- **[llama.cpp](https://github.com/ggml-org/llama.cpp)** — on-device LLM brain (NEON-optimized on Arm)
 
 ## Run it
 
