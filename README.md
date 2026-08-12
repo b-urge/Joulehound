@@ -2,7 +2,7 @@
 
 **FLOPs lie about energy. Joulehound sniffs out what your AI agent actually costs — measured on Arm silicon.**
 
-Most efficiency claims for on-device AI are reported in FLOPs. But a single memory access costs ~100× more energy than a compute op, so FLOP counts systematically mislead. Joulehound optimizes a local *agentic* AI workload, measures the real energy on an Arm device, and shows that the [NEXUS physics-grounded metric](https://pypi.org/project/nexus-ml-metrics/) (FLAIRS 2026) tracks measured joules while FLOPs don't.
+Most efficiency claims for on-device AI are reported in FLOPs. But a single memory access costs ~100× more energy than a compute op, so FLOP counts systematically mislead. Joulehound optimizes a local *agentic* AI workload, measures the real energy on an Arm device, and shows that the [NEXUS physics-grounded metric](https://pypi.org/project/nexus-ml-metrics/) ([FLAIRS 2026](https://journals.flvc.org/FLAIRS/article/view/141781)) tracks measured joules while FLOPs don't.
 
 ## The experiment
 
