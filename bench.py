@@ -48,6 +48,9 @@ def main():
     ap.add_argument("--reps", type=int, default=5)
     ap.add_argument("--meter", choices=["fake", "android"], default="fake")
     ap.add_argument("--out", default="results.csv")
+    ap.add_argument("--warmup", type=int, default=1,
+                    help="unmeasured warm-up reps run first (pays one-time costs: "
+                         "lazy imports, runs.db creation, caches)")
     args = ap.parse_args()
 
     run_fn = CONFIGS[args.config]
@@ -56,6 +59,10 @@ def main():
 
     print(f"\nJoulehound :: {args.config} :: {args.reps} reps :: meter={args.meter}")
     print("-" * 56)
+    for _ in range(args.warmup):
+        run_fn()
+    if args.warmup:
+        print(f"  warm-up: {args.warmup} unmeasured rep(s) discarded")
     for i in range(args.reps):
         meter = get_meter(args.meter)
         with meter.measure():
@@ -64,10 +71,16 @@ def main():
         energies.append(r.energy_joules)
         flops = flops_estimate(args.config, out["steps"])
         nexus = score_run(r.energy_joules, energies)
+        try:  # never let the prediction model kill a device run
+            from joulehound.predicted import predict_config_energy
+            pred = round(predict_config_energy(args.config, out["steps"]), 9)
+        except Exception:
+            pred = ""
         rows.append({
-            "config": args.config, "rep": i + 1,
+            "config": args.config, "rep": i + 1, "meter": args.meter,
             "energy_j": r.energy_joules, "power_avg_w": r.power_watts_avg,
             "duration_s": r.duration_seconds, "flops_proxy": flops,
+            "nexus_pred_j": pred,
             **nexus,
         })
         print(f"  rep {i+1}: {r.energy_joules:7.3f} J  "

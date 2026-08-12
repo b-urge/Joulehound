@@ -100,18 +100,43 @@ class _MeterContext:
         return False
 
 
-class AndroidBatteryMeter(_BaseMeter):
-    """Real power from Android battery sysfs. Run inside Termux on the phone.
+def _to_microamps(raw: int) -> float:
+    """Normalize current_now to microamps.
 
-    IMPORTANT for clean numbers: phone UNPLUGGED (USB charging poisons the
-    reading), airplane mode + WiFi only, screen brightness fixed.
+    The kernel ABI says microamps, but several Samsung drivers report
+    MILLIamps. Under load, real draw is hundreds of mA: as uA that reads
+    ~100,000-3,000,000; as mA it reads ~100-3,000. Anything under 10,000 is
+    therefore treated as mA. (Deep-idle uA readings can be misclassified,
+    but idle watts are negligible and we only integrate during load.)
+    """
+    v = abs(raw)  # sign convention (charge/discharge) varies by OEM
+    return v * 1000.0 if v < 10_000 else float(v)
+
+
+def _to_microvolts(raw: int) -> float:
+    """Normalize voltage_now to microvolts.
+
+    A Li-ion cell sits at 3,400,000-4,500,000 uV; the same value in mV is
+    3,400-4,500. Anything under 100,000 is treated as mV.
+    """
+    v = abs(raw)
+    return v * 1000.0 if v < 100_000 else float(v)
+
+
+class AndroidBatteryMeter(_BaseMeter):
+    """Real power from Android battery sysfs. Run inside Termux on the device.
+
+    IMPORTANT for clean numbers: device UNPLUGGED (USB charging poisons the
+    reading), airplane mode + WiFi only, screen off (termux-wake-lock) or
+    brightness fixed. Unit quirks (uA vs mA, uV vs mV, sign) are normalized
+    by _to_microamps/_to_microvolts so Samsung devices read correctly.
     """
     def _read_watts(self) -> float:
         with open(CURRENT_PATH) as f:
-            amps = abs(int(f.read().strip())) / 1e6
+            microamps = _to_microamps(int(f.read().strip()))
         with open(VOLTAGE_PATH) as f:
-            volts = int(f.read().strip()) / 1e6
-        return amps * volts
+            microvolts = _to_microvolts(int(f.read().strip()))
+        return (microamps * microvolts) / 1e12
 
 
 class FakeMeter(_BaseMeter):
