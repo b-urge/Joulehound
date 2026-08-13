@@ -46,7 +46,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", choices=list(CONFIGS), required=True)
     ap.add_argument("--reps", type=int, default=5)
-    ap.add_argument("--meter", choices=["fake", "android"], default="fake")
+    ap.add_argument("--meter", choices=["fake", "android", "termuxapi"], default="fake")
     ap.add_argument("--out", default="results.csv")
     ap.add_argument("--warmup", type=int, default=1,
                     help="unmeasured warm-up reps run first (pays one-time costs: "

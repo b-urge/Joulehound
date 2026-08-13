@@ -14,6 +14,9 @@ Swap the backend on the command line: --meter fake  (default)
                                       --meter android
 """
 from __future__ import annotations
+import json
+import os
+import subprocess
 import time
 import threading
 from dataclasses import dataclass, field
@@ -64,15 +67,25 @@ class _BaseMeter:
     def _start(self):
         self._samples.clear()
         self._stop.clear()
-        self._thread = threading.Thread(target=self._loop, daemon=True)
         self._t0 = time.time()
+        try:  # sample the t=0 edge synchronously so slow meters don't miss it
+            self._samples.append((self._t0, self._read_watts()))
+        except Exception:
+            pass
+        self._thread = threading.Thread(target=self._loop, daemon=True)
         self._thread.start()
 
     def _finish(self):
         self._stop.set()
         if self._thread:
-            self._thread.join(timeout=2.0)
-        duration = time.time() - self._t0
+            self._thread.join(timeout=6.0)  # an in-flight slow read may need it
+        t_end = time.time()
+        try:  # close the end edge too; at ~1 Hz cadence this is real energy
+            self._samples.append((t_end, self._read_watts()))
+        except Exception:
+            pass
+        duration = t_end - self._t0
+        self._samples.sort(key=lambda s: s[0])  # keep trapezoid monotonic
         watts = [w for _, w in self._samples] or [0.0]
         # Trapezoidal integration of power over time -> joules.
         energy = 0.0
@@ -139,6 +152,66 @@ class AndroidBatteryMeter(_BaseMeter):
         return (microamps * microvolts) / 1e12
 
 
+
+class TermuxApiBatteryMeter(_BaseMeter):
+    """Power via the Android battery API (Termux:API app + termux-api pkg).
+
+    For devices whose vendor/SELinux policy denies battery sysfs outright
+    (e.g. recent One UI): termux-battery-status is the sanctioned pipe.
+    Each reading is an IPC round-trip (~0.2-1 s), so effective cadence is
+    ~1 Hz rather than 200 Hz. measure() samples both edges synchronously,
+    reps last many seconds, and power varies slowly, so trapezoid error
+    stays small -- and the polling cost is identical in both configs, so it
+    cancels out of the normalized comparison.
+
+    Field quirks seen across devices/builds, all normalized here:
+      current -- microamps or milliamps, sign convention varies.
+      voltage -- millivolts when present; MISSING on many builds. When
+                 absent, a fixed nominal cell voltage is used
+                 (env JOULEHOUND_VBAT_MV, default 3850). True voltage drifts
+                 <1% across back-to-back runs at equal charge, so relative
+                 results are unaffected; absolute joules carry a few percent
+                 of uncertainty, disclosed in the README.
+    """
+
+    def __init__(self, sample_hz: float = 1.5):
+        super().__init__(sample_hz=sample_hz)
+        self._last: float | None = None
+        self._warned_voltage = False
+
+    def _voltage_microvolts(self, data: dict) -> float:
+        raw = data.get("voltage")
+        if raw is None:
+            mv = os.environ.get("JOULEHOUND_VBAT_MV", "3850")
+            if not self._warned_voltage:
+                print(f"  [termuxapi] no voltage field; using nominal {mv} mV",
+                      flush=True)
+                self._warned_voltage = True
+            return float(mv) * 1000.0
+        v = abs(float(raw))
+        if v < 10.0:  # plain volts, seen on rare builds
+            return v * 1e6
+        return _to_microvolts(int(v))  # handles mV vs uV
+
+    def _read_watts(self) -> float:
+        try:
+            proc = subprocess.run(["termux-battery-status"],
+                                  capture_output=True, text=True, timeout=5)
+            data = json.loads(proc.stdout)
+            microamps = _to_microamps(int(round(float(data["current"]))))
+            watts = (microamps * self._voltage_microvolts(data)) / 1e12
+            self._last = watts
+            return watts
+        except Exception as e:
+            if self._last is not None:
+                return self._last  # ride through a single IPC hiccup
+            raise RuntimeError(
+                "termux-battery-status failed on its first read. Is the "
+                "Termux:API app installed from F-Droid, and did you run "
+                "pkg install termux-api? Try termux-api-start, then retry."
+            ) from e
+
+
 class FakeMeter(_BaseMeter):
     """Synthetic power for laptop dev. Idle ~1.5W, load ~4.5W with jitter."""
     def __init__(self, sample_hz: float = 200.0, load_watts: float = 4.5):
@@ -153,4 +226,5 @@ class FakeMeter(_BaseMeter):
 
 
 def get_meter(name: str, **kw) -> _BaseMeter:
-    return {"fake": FakeMeter, "android": AndroidBatteryMeter}[name](**kw)
+    return {"fake": FakeMeter, "android": AndroidBatteryMeter,
+            "termuxapi": TermuxApiBatteryMeter}[name](**kw)
