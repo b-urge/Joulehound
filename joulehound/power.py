@@ -67,11 +67,15 @@ class _BaseMeter:
     def _start(self):
         self._samples.clear()
         self._stop.clear()
-        self._t0 = time.time()
-        try:  # sample the t=0 edge synchronously so slow meters don't miss it
-            self._samples.append((self._t0, self._read_watts()))
+        try:  # take the t=0 reading BEFORE starting the clock, so the
+            # meter's own IPC latency (~0.5s on termuxapi) is never billed
+            # to the workload
+            w0 = self._read_watts()
         except Exception:
-            pass
+            w0 = None
+        self._t0 = time.time()
+        if w0 is not None:
+            self._samples.append((self._t0, w0))
         self._thread = threading.Thread(target=self._loop, daemon=True)
         self._thread.start()
 

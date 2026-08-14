@@ -42,6 +42,26 @@ def score_run(energy_j: float, energies_so_far: list[float]) -> dict:
     return {"ecu": round(ecu, 4), "mcer": round(mcer, 4), "ddev": round(ddev, 4)}
 
 
+def verify_decode_integrity():
+    """Refuse to benchmark a workload that isn't actually working.
+
+    A missing zbar/dbus/cv2 backend can silently turn decode_layers into a
+    no-op that returns empty strings: the bench would then produce
+    plausible-looking joules for a demo that decodes nothing. Fail loudly
+    instead."""
+    from multispecqr import encode_layers, decode_layers
+    probe = [f"integrity-{i}" for i in range(6)]
+    out = decode_layers(encode_layers(probe, version=6), num_layers=6)
+    if out != probe:
+        raise SystemExit(
+            "DECODE INTEGRITY FAILED: multispecqr round-trip returned "
+            f"{out!r}. Refusing to produce numbers for a workload that "
+            "is not real. Check zbar/dbus and the compat/cv2.py shim "
+            "(see README, Termux section)."
+        )
+    print("  decode integrity: OK")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", choices=list(CONFIGS), required=True)
@@ -52,6 +72,7 @@ def main():
                     help="unmeasured warm-up reps run first (pays one-time costs: "
                          "lazy imports, runs.db creation, caches)")
     args = ap.parse_args()
+    verify_decode_integrity()
 
     run_fn = CONFIGS[args.config]
     energies: list[float] = []
